@@ -117,9 +117,101 @@ input::placeholder {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, var(--gc-outline-v) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.45;
+  overflow: hidden;
+  --grid-accent: var(--gc-accent);
+  --grid-x: 50vw;
+  --grid-y: 50vh;
+  --grid-near-x: 0px;
+  --grid-near-y: 0px;
+  --grid-mid-x: 0px;
+  --grid-mid-y: 0px;
+  --grid-far-x: 0px;
+  --grid-far-y: 0px;
+  --grid-near-dot: 1.05px;
+  --grid-mid-dot: 0.82px;
+  --grid-large-dot: 1.35px;
+  --grid-near-opacity: 0.4;
+  --grid-glow-opacity: 0.62;
+  background-image:
+    radial-gradient(
+      circle at var(--grid-x) var(--grid-y),
+      color-mix(in srgb, var(--grid-accent) 15%, transparent) 0,
+      transparent 280px
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--gc-outline-v) 92%, transparent) var(--grid-mid-dot),
+      transparent calc(var(--grid-mid-dot) + 0.55px)
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--gc-outline-v) 55%, transparent) 0.65px,
+      transparent 1.25px
+    );
+  background-position: 0 0, var(--grid-mid-x) var(--grid-mid-y), var(--grid-far-x) var(--grid-far-y);
+  background-size: 100% 100%, 18px 18px, 54px 54px;
+  opacity: 0.72;
+}
+
+.dot-grid::before,
+.dot-grid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dot-grid::before {
+  background-image:
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--grid-accent) 84%, white 4%) var(--grid-near-dot),
+      transparent calc(var(--grid-near-dot) + 0.8px)
+    );
+  background-position: var(--grid-near-x) var(--grid-near-y);
+  background-size: 18px 18px;
+  opacity: var(--grid-near-opacity);
+  -webkit-mask-image: radial-gradient(
+    circle at var(--grid-x) var(--grid-y),
+    #000 0 76px,
+    rgba(0, 0, 0, 0.78) 128px,
+    transparent 260px
+  );
+  mask-image: radial-gradient(
+    circle at var(--grid-x) var(--grid-y),
+    #000 0 76px,
+    rgba(0, 0, 0, 0.78) 128px,
+    transparent 260px
+  );
+}
+
+.dot-grid::after {
+  background-image:
+    radial-gradient(
+      circle at var(--grid-x) var(--grid-y),
+      color-mix(in srgb, var(--grid-accent) 16%, transparent) 0,
+      transparent 210px
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--grid-accent) 58%, var(--gc-outline-v)) var(--grid-large-dot),
+      transparent calc(var(--grid-large-dot) + 1.2px)
+    );
+  background-position: 0 0, var(--grid-far-x) var(--grid-far-y);
+  background-size: 100% 100%, 36px 36px;
+  opacity: var(--grid-glow-opacity);
+  -webkit-mask-image: radial-gradient(
+    circle at var(--grid-x) var(--grid-y),
+    rgba(0, 0, 0, 0.9) 0,
+    rgba(0, 0, 0, 0.46) 150px,
+    transparent 340px
+  );
+  mask-image: radial-gradient(
+    circle at var(--grid-x) var(--grid-y),
+    rgba(0, 0, 0, 0.9) 0,
+    rgba(0, 0, 0, 0.46) 150px,
+    transparent 340px
+  );
 }
 
 .app-shell {
@@ -1525,6 +1617,17 @@ input::placeholder {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-grid {
+    opacity: 0.58;
+  }
+
+  .dot-grid::before,
+  .dot-grid::after {
+    opacity: 0.32;
   }
 }
 

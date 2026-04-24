@@ -76,6 +76,132 @@ function applyTheme(theme) {
   }
 }
 
+function DotGrid({ accentColor }) {
+  const gridRef = useRef(null);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || typeof window === 'undefined') return undefined;
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const target = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      speed: 0,
+    };
+    const current = { ...target };
+    let previous = {
+      x: target.x,
+      y: target.y,
+      time: performance.now(),
+    };
+    let frame = 0;
+
+    const updateVars = () => {
+      const width = Math.max(window.innerWidth, 1);
+      const height = Math.max(window.innerHeight, 1);
+      const offsetX = ((current.x - width / 2) / width) * -18;
+      const offsetY = ((current.y - height / 2) / height) * -18;
+      const energy = Math.min(Math.max(current.speed, 0), 1);
+
+      grid.style.setProperty('--grid-x', `${current.x.toFixed(1)}px`);
+      grid.style.setProperty('--grid-y', `${current.y.toFixed(1)}px`);
+      grid.style.setProperty('--grid-near-x', `${offsetX.toFixed(2)}px`);
+      grid.style.setProperty('--grid-near-y', `${offsetY.toFixed(2)}px`);
+      grid.style.setProperty('--grid-mid-x', `${(offsetX * 0.55).toFixed(2)}px`);
+      grid.style.setProperty('--grid-mid-y', `${(offsetY * 0.55).toFixed(2)}px`);
+      grid.style.setProperty('--grid-far-x', `${(-offsetX * 0.38).toFixed(2)}px`);
+      grid.style.setProperty('--grid-far-y', `${(-offsetY * 0.38).toFixed(2)}px`);
+      grid.style.setProperty('--grid-near-dot', `${(1.05 + energy * 0.58).toFixed(2)}px`);
+      grid.style.setProperty('--grid-mid-dot', `${(0.82 + energy * 0.28).toFixed(2)}px`);
+      grid.style.setProperty('--grid-large-dot', `${(1.35 + energy * 0.82).toFixed(2)}px`);
+      grid.style.setProperty('--grid-near-opacity', `${(0.4 + energy * 0.24).toFixed(3)}`);
+      grid.style.setProperty('--grid-glow-opacity', `${(0.62 + energy * 0.2).toFixed(3)}`);
+    };
+
+    const hasMotion = () =>
+      Math.abs(target.x - current.x) > 0.08 ||
+      Math.abs(target.y - current.y) > 0.08 ||
+      Math.abs(target.speed - current.speed) > 0.01 ||
+      target.speed > 0.01 ||
+      current.speed > 0.01;
+
+    const animate = () => {
+      current.x += (target.x - current.x) * 0.14;
+      current.y += (target.y - current.y) * 0.14;
+      current.speed += (target.speed - current.speed) * 0.16;
+      target.speed *= 0.9;
+      updateVars();
+
+      if (hasMotion()) {
+        frame = window.requestAnimationFrame(animate);
+      } else {
+        current.x = target.x;
+        current.y = target.y;
+        current.speed = 0;
+        target.speed = 0;
+        updateVars();
+        frame = 0;
+      }
+    };
+
+    const startAnimation = () => {
+      if (!reduceMotion && !frame) {
+        frame = window.requestAnimationFrame(animate);
+      }
+    };
+
+    const handlePointerMove = (event) => {
+      const now = performance.now();
+      const distance = Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
+      const elapsed = Math.max(now - previous.time, 16);
+
+      target.x = event.clientX;
+      target.y = event.clientY;
+      target.speed = Math.min(1, distance / elapsed / 0.75);
+      previous = { x: event.clientX, y: event.clientY, time: now };
+
+      if (reduceMotion) {
+        current.x = target.x;
+        current.y = target.y;
+        current.speed = 0.15;
+        updateVars();
+      } else {
+        startAnimation();
+      }
+    };
+
+    const handleWindowRest = () => {
+      target.x = window.innerWidth / 2;
+      target.y = window.innerHeight / 2;
+      target.speed = 0;
+      startAnimation();
+    };
+
+    updateVars();
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    window.addEventListener('resize', handleWindowRest);
+    window.addEventListener('blur', handleWindowRest);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('resize', handleWindowRest);
+      window.removeEventListener('blur', handleWindowRest);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={gridRef}
+      className="dot-grid"
+      style={{ '--grid-accent': accentColor || 'var(--gc-accent)' }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function loadSessions(labId) {
   return storageGet(`nfta_sessions_${labId}`, []);
 }
@@ -637,7 +763,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="dot-grid" />
+      <DotGrid accentColor={selectedLab?.color} />
       {sidebarOpen && <button className="mobile-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={`sidebar ${sidebarOpen ? 'is-open' : ''}`}>
@@ -805,7 +931,7 @@ function App() {
 function AuthLoadingScreen() {
   return (
     <div className="auth-screen">
-      <div className="dot-grid" />
+      <DotGrid />
       <div className="auth-loading">
         <span className="brand-mark">
           <span className="project-logo" aria-hidden="true" />
@@ -827,7 +953,7 @@ function AuthScreen({ onSignIn, error, supabaseReady }) {
 
   return (
     <div className="auth-screen">
-      <div className="dot-grid" />
+      <DotGrid />
       <section className="auth-card" aria-label="Sign in">
         <div className="auth-banner">
           <div className="brand-mark large">
