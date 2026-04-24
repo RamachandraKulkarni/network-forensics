@@ -77,124 +77,285 @@ function applyTheme(theme) {
 }
 
 function DotGrid({ accentColor }) {
-  const gridRef = useRef(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid || typeof window === 'undefined') return undefined;
+    const canvas = canvasRef.current;
+    if (!canvas || typeof window === 'undefined') return undefined;
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const target = {
+    const context = canvas.getContext('2d');
+    if (!context) return undefined;
+
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let width = 0;
+    let height = 0;
+    let frame = 0;
+    let running = true;
+    let dots = [];
+    let palette = null;
+
+    const pointer = {
+      active: false,
       x: window.innerWidth / 2,
       y: window.innerHeight / 2,
-      speed: 0,
-    };
-    const current = { ...target };
-    let previous = {
-      x: target.x,
-      y: target.y,
+      targetX: window.innerWidth / 2,
+      targetY: window.innerHeight / 2,
+      velocity: 0,
+      targetVelocity: 0,
+      phase: 0,
+      lastDraw: performance.now(),
+      previousX: window.innerWidth / 2,
+      previousY: window.innerHeight / 2,
       time: performance.now(),
     };
-    let frame = 0;
 
-    const updateVars = () => {
-      const width = Math.max(window.innerWidth, 1);
-      const height = Math.max(window.innerHeight, 1);
-      const offsetX = ((current.x - width / 2) / width) * -18;
-      const offsetY = ((current.y - height / 2) / height) * -18;
-      const energy = Math.min(Math.max(current.speed, 0), 1);
+    const parseColor = (value, fallback) => {
+      const text = String(value || '').trim();
+      const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (hex) {
+        let value = hex[1];
+        if (value.length === 3) value = value.split('').map((part) => part + part).join('');
+        const intValue = Number.parseInt(value, 16);
+        return {
+          r: (intValue >> 16) & 255,
+          g: (intValue >> 8) & 255,
+          b: intValue & 255,
+        };
+      }
 
-      grid.style.setProperty('--grid-x', `${current.x.toFixed(1)}px`);
-      grid.style.setProperty('--grid-y', `${current.y.toFixed(1)}px`);
-      grid.style.setProperty('--grid-near-x', `${offsetX.toFixed(2)}px`);
-      grid.style.setProperty('--grid-near-y', `${offsetY.toFixed(2)}px`);
-      grid.style.setProperty('--grid-mid-x', `${(offsetX * 0.55).toFixed(2)}px`);
-      grid.style.setProperty('--grid-mid-y', `${(offsetY * 0.55).toFixed(2)}px`);
-      grid.style.setProperty('--grid-far-x', `${(-offsetX * 0.38).toFixed(2)}px`);
-      grid.style.setProperty('--grid-far-y', `${(-offsetY * 0.38).toFixed(2)}px`);
-      grid.style.setProperty('--grid-near-dot', `${(1.05 + energy * 0.58).toFixed(2)}px`);
-      grid.style.setProperty('--grid-mid-dot', `${(0.82 + energy * 0.28).toFixed(2)}px`);
-      grid.style.setProperty('--grid-large-dot', `${(1.35 + energy * 0.82).toFixed(2)}px`);
-      grid.style.setProperty('--grid-near-opacity', `${(0.4 + energy * 0.24).toFixed(3)}`);
-      grid.style.setProperty('--grid-glow-opacity', `${(0.62 + energy * 0.2).toFixed(3)}`);
+      const rgb = text.match(/^rgba?\((.+)\)$/i);
+      if (rgb) {
+        const parts = rgb[1]
+          .split(/[,\s/]+/)
+          .map((part) => Number.parseFloat(part))
+          .filter((part) => Number.isFinite(part));
+        if (parts.length >= 3) {
+          return { r: parts[0], g: parts[1], b: parts[2] };
+        }
+      }
+
+      return fallback;
     };
 
-    const hasMotion = () =>
-      Math.abs(target.x - current.x) > 0.08 ||
-      Math.abs(target.y - current.y) > 0.08 ||
-      Math.abs(target.speed - current.speed) > 0.01 ||
-      target.speed > 0.01 ||
-      current.speed > 0.01;
+    const colorString = (color, alpha) =>
+      `rgba(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)}, ${alpha.toFixed(3)})`;
 
-    const animate = () => {
-      current.x += (target.x - current.x) * 0.14;
-      current.y += (target.y - current.y) * 0.14;
-      current.speed += (target.speed - current.speed) * 0.16;
-      target.speed *= 0.9;
-      updateVars();
+    const mixColor = (from, to, amount) => ({
+      r: from.r + (to.r - from.r) * amount,
+      g: from.g + (to.g - from.g) * amount,
+      b: from.b + (to.b - from.b) * amount,
+    });
 
-      if (hasMotion()) {
-        frame = window.requestAnimationFrame(animate);
-      } else {
-        current.x = target.x;
-        current.y = target.y;
-        current.speed = 0;
-        target.speed = 0;
-        updateVars();
-        frame = 0;
+    const dotSeed = (x, y) => {
+      const value = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return value - Math.floor(value);
+    };
+
+    const syncPalette = () => {
+      const styles = getComputedStyle(document.body);
+      const fallbackAccent = parseColor(styles.getPropertyValue('--gc-accent'), { r: 255, g: 198, b: 39 });
+      const lightTheme = document.body.dataset.theme === 'light';
+
+      palette = {
+        accent: parseColor(accentColor, fallbackAccent),
+        base: parseColor(styles.getPropertyValue('--gc-outline-v'), lightTheme ? { r: 150, g: 142, b: 142 } : { r: 62, g: 72, b: 79 }),
+        baseAlpha: lightTheme ? 0.42 : 0.28,
+        liftAlpha: lightTheme ? 0.26 : 0.32,
+      };
+    };
+
+    const buildDots = () => {
+      const spacing = width < 640 ? 16 : 18;
+      const columns = Math.ceil(width / spacing) + 3;
+      const rows = Math.ceil(height / spacing) + 3;
+      const nextDots = [];
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+          const x = column * spacing - spacing;
+          const y = row * spacing - spacing;
+          const seed = dotSeed(column + 1, row + 1);
+          nextDots.push({
+            x,
+            y,
+            depth: 0.35 + seed * 0.9,
+            phase: seed * Math.PI * 2,
+          });
+        }
       }
+
+      dots = nextDots;
+    };
+
+    const draw = (now = performance.now()) => {
+      if (!palette) syncPalette();
+
+      const delta = Math.min(now - pointer.lastDraw, 48);
+      pointer.lastDraw = now;
+
+      if (motionQuery.matches) {
+        pointer.x = pointer.targetX;
+        pointer.y = pointer.targetY;
+        pointer.velocity = 0;
+      } else {
+        const ease = 1 - Math.pow(0.001, delta / 260);
+        pointer.x += (pointer.targetX - pointer.x) * ease;
+        pointer.y += (pointer.targetY - pointer.y) * ease;
+        pointer.velocity += (pointer.targetVelocity - pointer.velocity) * 0.16;
+        pointer.targetVelocity *= 0.86;
+        pointer.phase += delta * (0.0012 + pointer.velocity * 0.0028);
+      }
+
+      context.clearRect(0, 0, width, height);
+
+      const radius = Math.min(220, Math.max(150, width * 0.145));
+      const time = now * 0.001;
+      const active = pointer.active;
+
+      dots.forEach((dot) => {
+        const dx = dot.x - pointer.x;
+        const dy = dot.y - pointer.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const rawInfluence = active ? Math.max(0, 1 - distance / radius) : 0;
+        const influence = rawInfluence * rawInfluence * (3 - 2 * rawInfluence);
+        const angle = Math.atan2(dy, dx);
+        const ambient = motionQuery.matches
+          ? 0
+          : Math.sin(dot.x * 0.018 + dot.y * 0.011 - time * 1.4 + dot.phase) * 0.5 + 0.5;
+        const wave = Math.sin(distance * 0.09 - pointer.phase * 10 + dot.phase);
+        const ripple = wave * influence;
+        const waveBand = (wave + 1) * 0.5;
+        const depth = dot.depth;
+        const push = influence * (4.8 + pointer.velocity * 8) * depth;
+        const swirl = ripple * (5.2 + pointer.velocity * 4.2) * depth;
+        const x = dot.x + Math.cos(angle) * push - Math.sin(angle) * swirl;
+        const y = dot.y + Math.sin(angle) * push + Math.cos(angle) * swirl;
+        const tint = Math.min(0.46, influence * (0.15 + waveBand * 0.36 + pointer.velocity * 0.08));
+        const color = mixColor(palette.base, palette.accent, tint);
+        const size = Math.max(
+          0.55,
+          0.58 + depth * 0.46 + influence * (0.44 + waveBand * 0.42 + pointer.velocity * 0.3) + ambient * 0.14,
+        );
+        const alpha = Math.min(
+          0.76,
+          palette.baseAlpha + depth * 0.08 + ambient * 0.08 + influence * palette.liftAlpha * (0.22 + waveBand * 0.58),
+        );
+
+        context.beginPath();
+        context.fillStyle = colorString(color, alpha);
+        context.arc(x, y, size, 0, Math.PI * 2);
+        context.fill();
+      });
     };
 
     const startAnimation = () => {
-      if (!reduceMotion && !frame) {
-        frame = window.requestAnimationFrame(animate);
-      }
+      if (!running || motionQuery.matches || frame) return;
+
+      const animate = (now) => {
+        draw(now);
+        frame = running && !motionQuery.matches ? window.requestAnimationFrame(animate) : 0;
+      };
+
+      frame = window.requestAnimationFrame(animate);
+    };
+
+    const drawReducedMotion = () => {
+      if (motionQuery.matches) draw();
+    };
+
+    const resize = () => {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.ceil(width * pixelRatio);
+      canvas.height = Math.ceil(height * pixelRatio);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      syncPalette();
+      buildDots();
+      draw();
+      startAnimation();
     };
 
     const handlePointerMove = (event) => {
       const now = performance.now();
-      const distance = Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
-      const elapsed = Math.max(now - previous.time, 16);
+      const wasActive = pointer.active;
+      const distance = pointer.active ? Math.hypot(event.clientX - pointer.previousX, event.clientY - pointer.previousY) : 0;
+      const elapsed = Math.max(now - pointer.time, 16);
 
-      target.x = event.clientX;
-      target.y = event.clientY;
-      target.speed = Math.min(1, distance / elapsed / 0.75);
-      previous = { x: event.clientX, y: event.clientY, time: now };
+      pointer.active = true;
+      pointer.targetX = event.clientX;
+      pointer.targetY = event.clientY;
 
-      if (reduceMotion) {
-        current.x = target.x;
-        current.y = target.y;
-        current.speed = 0.15;
-        updateVars();
+      if (!wasActive) {
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+      }
+
+      pointer.targetVelocity = Math.min(1, distance / elapsed / 0.85);
+      pointer.previousX = event.clientX;
+      pointer.previousY = event.clientY;
+      pointer.time = now;
+
+      if (motionQuery.matches) {
+        draw();
       } else {
         startAnimation();
       }
     };
 
-    const handleWindowRest = () => {
-      target.x = window.innerWidth / 2;
-      target.y = window.innerHeight / 2;
-      target.speed = 0;
-      startAnimation();
+    const handlePointerLeave = () => {
+      pointer.active = false;
+      pointer.targetVelocity = 0;
+      drawReducedMotion();
     };
 
-    updateVars();
+    const handlePointerOut = (event) => {
+      if (!event.relatedTarget) handlePointerLeave();
+    };
+
+    const handleThemeChange = () => {
+      syncPalette();
+      draw();
+    };
+
+    const handleMotionChange = () => {
+      if (motionQuery.matches) {
+        if (frame) window.cancelAnimationFrame(frame);
+        frame = 0;
+        draw();
+      } else {
+        startAnimation();
+      }
+    };
+
+    const themeObserver = new MutationObserver(handleThemeChange);
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
+
+    resize();
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('resize', handleWindowRest);
-    window.addEventListener('blur', handleWindowRest);
+    window.addEventListener('mouseout', handlePointerOut);
+    window.addEventListener('resize', resize);
+    window.addEventListener('blur', handlePointerLeave);
+    motionQuery.addEventListener('change', handleMotionChange);
 
     return () => {
+      running = false;
+      themeObserver.disconnect();
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('resize', handleWindowRest);
-      window.removeEventListener('blur', handleWindowRest);
+      window.removeEventListener('mouseout', handlePointerOut);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('blur', handlePointerLeave);
+      motionQuery.removeEventListener('change', handleMotionChange);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [accentColor]);
 
   return (
-    <div
-      ref={gridRef}
+    <canvas
+      ref={canvasRef}
       className="dot-grid"
       style={{ '--grid-accent': accentColor || 'var(--gc-accent)' }}
       aria-hidden="true"
