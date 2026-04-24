@@ -1355,13 +1355,17 @@ function MessageBubble({ message }) {
 }
 
 function FormattedMessage({ content }) {
-  const lines = content.split('\n');
-  const elements = [];
-  let codeLines = [];
-  let inCode = false;
+  const extractThinking = (text) => {
+    const thoughts = [];
+    const answer = text.replace(/<think>([\s\S]*?)(?:<\/think>|<\/thinking>|$)/gi, (_match, thought) => {
+      if (thought?.trim()) thoughts.push(thought.trim());
+      return '';
+    });
+    return { answer: answer.trim(), thoughts };
+  };
 
-  const formatInline = (text) => {
-    const pattern = /(\*\*(.+?)\*\*|`([^`]+)`)/g;
+  const formatInline = (text, prefix = 'inline') => {
+    const pattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*\*(.+?)\*\*|\*([^*]+)\*|`([^`]+)`)/g;
     const parts = [];
     let match;
     let last = 0;
@@ -1369,78 +1373,192 @@ function FormattedMessage({ content }) {
 
     while ((match = pattern.exec(text)) !== null) {
       if (match.index > last) parts.push(<span key={key++}>{text.slice(last, match.index)}</span>);
-      if (match[0].startsWith('**')) {
-        parts.push(<strong key={key++}>{match[2]}</strong>);
+      if (match[2] && match[3]) {
+        parts.push(
+          <a key={key++} href={match[3]} target="_blank" rel="noreferrer">
+            {match[2]}
+          </a>,
+        );
+      } else if (match[4]) {
+        parts.push(<strong key={key++}>{match[4]}</strong>);
+      } else if (match[5]) {
+        parts.push(<em key={key++}>{match[5]}</em>);
       } else {
-        parts.push(<code key={key++}>{match[3]}</code>);
+        parts.push(<code key={key++}>{match[6]}</code>);
       }
       last = match.index + match[0].length;
     }
 
     if (last < text.length) parts.push(<span key={key++}>{text.slice(last)}</span>);
-    return parts.length ? parts : text;
+    return parts.length ? parts.map((part, index) => ({ ...part, key: `${prefix}-${index}` })) : text;
   };
 
-  lines.forEach((line, index) => {
-    if (line.startsWith('```')) {
-      if (!inCode) {
-        inCode = true;
-        codeLines = [];
-      } else {
-        inCode = false;
-        elements.push(
-          <pre key={`code-${index}`}>
-            <code>{codeLines.join('\n')}</code>
-          </pre>,
+  const renderAnswer = (text) => {
+    const lines = text.split('\n');
+    const blocks = [];
+    let codeLines = [];
+    let listItems = [];
+    let orderedItems = [];
+    let paragraph = [];
+    let quote = [];
+    let inCode = false;
+    let blockKey = 0;
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      const text = paragraph.join(' ').trim();
+      if (text) blocks.push(<p key={`p-${blockKey++}`}>{formatInline(text, `p-${blockKey}`)}</p>);
+      paragraph = [];
+    };
+
+    const flushList = () => {
+      if (listItems.length) {
+        blocks.push(
+          <ul key={`ul-${blockKey++}`}>
+            {listItems.map((item, index) => (
+              <li key={index}>{formatInline(item, `ul-${blockKey}-${index}`)}</li>
+            ))}
+          </ul>,
         );
+        listItems = [];
       }
-      return;
-    }
+
+      if (orderedItems.length) {
+        blocks.push(
+          <ol key={`ol-${blockKey++}`}>
+            {orderedItems.map((item, index) => (
+              <li key={index}>{formatInline(item, `ol-${blockKey}-${index}`)}</li>
+            ))}
+          </ol>,
+        );
+        orderedItems = [];
+      }
+    };
+
+    const flushQuote = () => {
+      if (!quote.length) return;
+      blocks.push(
+        <blockquote key={`quote-${blockKey++}`}>
+          {formatInline(quote.join(' '), `quote-${blockKey}`)}
+        </blockquote>,
+      );
+      quote = [];
+    };
+
+    lines.forEach((line, index) => {
+      if (line.trim().startsWith('```')) {
+        flushParagraph();
+        flushList();
+        flushQuote();
+
+        if (!inCode) {
+          inCode = true;
+          codeLines = [];
+        } else {
+          inCode = false;
+          blocks.push(
+            <pre key={`code-${blockKey++}`}>
+              <code>{codeLines.join('\n')}</code>
+            </pre>,
+          );
+        }
+        return;
+      }
+
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        flushQuote();
+        return;
+      }
+
+      const heading = line.match(/^(#{1,3})\s+(.+)/);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        flushQuote();
+        const level = Math.min(heading[1].length, 3);
+        const HeadingTag = level === 1 ? 'h2' : 'h3';
+        blocks.push(<HeadingTag key={`heading-${blockKey++}`}>{formatInline(heading[2], `h-${blockKey}`)}</HeadingTag>);
+        return;
+      }
+
+      if (/^>\s?/.test(line)) {
+        flushParagraph();
+        flushList();
+        quote.push(line.replace(/^>\s?/, '').trim());
+        return;
+      }
+
+      if (/^\d+\.\s/.test(line)) {
+        flushParagraph();
+        flushQuote();
+        orderedItems.push(line.replace(/^\d+\.\s/, '').trim());
+        return;
+      }
+
+      if (/^[-*]\s/.test(line)) {
+        flushParagraph();
+        flushQuote();
+        listItems.push(line.replace(/^[-*]\s/, '').trim());
+        return;
+      }
+
+      if (/^\*\*(.+)\*\*$/.test(line.trim())) {
+        flushParagraph();
+        flushList();
+        flushQuote();
+        blocks.push(
+          <h3 key={`bold-heading-${blockKey++}`}>
+            {formatInline(line.trim().replace(/^\*\*/, '').replace(/\*\*$/, ''), `bh-${blockKey}`)}
+          </h3>,
+        );
+        return;
+      }
+
+      paragraph.push(line.trim());
+    });
 
     if (inCode) {
-      codeLines.push(line);
-      return;
-    }
-
-    if (!line.trim()) {
-      elements.push(<div className="message-spacer" key={index} />);
-      return;
-    }
-
-    if (/^\d+\.\s/.test(line)) {
-      const [, number] = line.match(/^(\d+)\./);
-      elements.push(
-        <div className="number-line" key={index}>
-          <span>{number}.</span>
-          <p>{formatInline(line.replace(/^\d+\.\s/, ''))}</p>
-        </div>,
+      blocks.push(
+        <pre key={`code-${blockKey++}`}>
+          <code>{codeLines.join('\n')}</code>
+        </pre>,
       );
-      return;
     }
 
-    if (/^[-*]\s/.test(line)) {
-      elements.push(
-        <div className="bullet-line" key={index}>
-          <span />
-          <p>{formatInline(line.replace(/^[-*]\s/, ''))}</p>
-        </div>,
-      );
-      return;
-    }
+    flushParagraph();
+    flushList();
+    flushQuote();
 
-    if (/^\*\*(.+)\*\*$/.test(line)) {
-      elements.push(
-        <h3 key={index}>
-          {line.replace(/^\*\*/, '').replace(/\*\*$/, '')}
-        </h3>,
-      );
-      return;
-    }
+    return blocks.length ? blocks : <p>{formatInline(text, 'fallback')}</p>;
+  };
 
-    elements.push(<p key={index}>{formatInline(line)}</p>);
-  });
+  const { answer, thoughts } = extractThinking(content);
 
-  return <div className="formatted-message">{elements}</div>;
+  return (
+    <div className="formatted-message">
+      {thoughts.length > 0 && (
+        <details className="thinking-disclosure">
+          <summary>
+            <LoaderCircle className="spin-slow" size={11} />
+            <span>Thinking</span>
+          </summary>
+          <div className="thinking-content">
+            {thoughts.map((thought, i) => (
+              <p key={i}>{thought}</p>
+            ))}
+          </div>
+        </details>
+      )}
+      {answer && renderAnswer(answer)}
+    </div>
+  );
 }
 
 function PendingImageTray({ images, onRemove }) {
