@@ -1,0 +1,14 @@
+{
+  "name": "Network Forensics Lab TA",
+  "short_name": "Forensics TA",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#131315",
+  "background_color": "#131315",
+  "display": "standalone"
+}

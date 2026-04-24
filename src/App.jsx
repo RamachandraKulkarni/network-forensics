@@ -62,7 +62,18 @@ function saveTheme(theme) {
 }
 
 function applyTheme(theme) {
-  document.body.dataset.theme = theme === 'light' ? 'light' : '';
+  const isLight = theme === 'light';
+  document.body.dataset.theme = isLight ? 'light' : '';
+
+  const favicon = document.getElementById('dynamic-favicon');
+  if (favicon) {
+    favicon.setAttribute('href', isLight ? '/favicon-light.png' : '/favicon-dark.png');
+  }
+
+  const themeColor = document.getElementById('theme-color');
+  if (themeColor) {
+    themeColor.setAttribute('content', isLight ? '#faf9f7' : '#131315');
+  }
 }
 
 function loadSessions(labId) {
