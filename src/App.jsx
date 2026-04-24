@@ -517,7 +517,13 @@ function buildSystemPrompt(lab, retrievedContext, manualContext, user, attachmen
     '',
     imageInstruction,
     '',
-    `Response rules: use the selected lab context first; help with process, interpretation, and report phrasing; do not invent evidence values such as hashes, IP addresses, filenames, timestamps, usernames, passphrases, or extracted payloads; when specific evidence values are required, tell the student where to find them or read them from provided screenshots if visible; do not reproduce long passages from the lab manual.`,
+    `Response rules:`,
+    `- Be brief and to the point. Answer only what is asked—no extra explanation.`,
+    `- Do NOT use em dashes (—). Use hyphens (-) or short phrases instead.`,
+    `- Use the selected lab context first; help with process, interpretation, and report phrasing.`,
+    `- Do not invent evidence values such as hashes, IP addresses, filenames, timestamps, usernames, passphrases, or extracted payloads.`,
+    `- When specific evidence values are required, tell the student where to find them or read them from provided screenshots if visible.`,
+    `- Do not reproduce long passages from the lab manual.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -1357,7 +1363,9 @@ function MessageBubble({ message }) {
 function FormattedMessage({ content }) {
   const extractThinking = (text) => {
     const thoughts = [];
-    const answer = text.replace(/<think>([\s\S]*?)(?:<\/think>|<\/thinking>|$)/gi, (_match, thought) => {
+    // Remove em dashes and replace with hyphens
+    const cleanText = text.replace(/—/g, '-');
+    const answer = cleanText.replace(/<think>([\s\S]*?)(?:<\/think>|<\/thinking>|$)/gi, (_match, thought) => {
       if (thought?.trim()) thoughts.push(thought.trim());
       return '';
     });
