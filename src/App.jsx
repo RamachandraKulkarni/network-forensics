@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 import { upsertProfile } from './lib/supabaseBackend';
+import { getLabManualContext } from './labManualContext';
 
 const IMAGE_LIMIT = 5;
 const SESSION_LIMIT = 12;
@@ -489,11 +490,14 @@ function retrieveContext(lab, query) {
     .join('\n\n');
 }
 
-function buildSystemPrompt(lab, retrievedContext, user) {
+function buildSystemPrompt(lab, retrievedContext, manualContext, user, attachments = []) {
   const tasks = (lab.tasks || [])
     .slice(0, 6)
     .map((task) => `- [${task.id}] ${task.taskSummary}`)
     .join('\n');
+  const imageInstruction = attachments.length
+    ? `The student attached ${attachments.length} image${attachments.length === 1 ? '' : 's'}. If image content is available, use visible text, filenames, hashes, timestamps, screenshots, and tool output. If the image is unreadable or not available to the model, say what evidence detail is needed instead of guessing.`
+    : '';
 
   return [
     `You are a dedicated Teaching Assistant for a Network Forensics / Digital Forensics lab course in the Information Technology program at Arizona State University, taught by Prof. John Lewis.`,
@@ -507,61 +511,46 @@ function buildSystemPrompt(lab, retrievedContext, user) {
     `Lab tasks:`,
     tasks,
     '',
+    manualContext ? `Selected lab manual context:\n${manualContext}` : '',
+    '',
     retrievedContext ? `Retrieved context:\n${retrievedContext}` : '',
     '',
-    `Rules: do not invent evidence values such as hashes, IP addresses, filenames, timestamps, or usernames. Help with process, interpretation, and phrasing.`,
+    imageInstruction,
+    '',
+    `Response rules: use the selected lab context first; help with process, interpretation, and report phrasing; do not invent evidence values such as hashes, IP addresses, filenames, timestamps, usernames, passphrases, or extracted payloads; when specific evidence values are required, tell the student where to find them or read them from provided screenshots if visible; do not reproduce long passages from the lab manual.`,
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-function mockResponse(lab, query, context, attachments = []) {
-  const task = (lab.tasks || []).find((candidate) => {
-    const haystack = [candidate.id, candidate.taskSummary, candidate.studentGoal, ...(candidate.toolHints || [])]
-      .join(' ')
-      .toLowerCase();
-    return query
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((token) => token.length > 3)
-      .some((token) => haystack.includes(token));
+async function completeWithMiniMax({ lab, messages }) {
+  const { data: sessionData } =
+    hasSupabaseConfig && supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+  const accessToken = sessionData.session?.access_token;
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify({
+      labId: lab?.id,
+      messages,
+    }),
   });
 
-  const attachmentLine = attachments.length
-    ? `\n\nI can see ${attachments.length} attached image${attachments.length === 1 ? '' : 's'} in this message. When the AI pipeline is connected, these previews should be sent as multimodal inputs alongside the text.`
-    : '';
-
-  if (task) {
-    return [
-      `**What this task is asking**`,
-      task.studentGoal || task.taskSummary,
-      '',
-      `**Tool or artifact involved**`,
-      (task.toolHints || []).slice(0, 3).map((hint) => `- ${hint}`).join('\n') || `- ${lab.tools[0]}`,
-      '',
-      `**What your finding should prove**`,
-      task.expectedArtifact || 'Your finding should connect the artifact to the forensic question and show why it matters.',
-      '',
-      `**Common mistake to avoid**`,
-      `- ${(task.commonMistakes || lab.painPoints || [])[0] || 'Do not invent lab-specific evidence values. Show how you located them.'}`,
-      '',
-      `**How to write the forensic interpretation**`,
-      task.interpretationTemplate || 'Document the tool, artifact, value found, and what that value proves.',
-      attachmentLine,
-    ].join('\n');
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `MiniMax request failed with status ${response.status}`);
   }
 
-  return [
-    `For Lab ${String(lab.number).padStart(2, '0')} - **${lab.title}**, I would approach this as a process question first.`,
-    '',
-    `1. Identify the artifact or tool involved: ${lab.tools.slice(0, 4).join(', ')}.`,
-    `2. Check the lab task wording and locate the evidence source before recording values.`,
-    `3. Capture the finding with enough context to prove where it came from.`,
-    `4. Write the interpretation as evidence plus meaning, not just a screenshot caption.`,
-    '',
-    context ? `Relevant lab context:\n${context}` : `Common issue: ${(lab.painPoints || [])[0] || 'students often skip the interpretation step.'}`,
-    attachmentLine,
-  ].join('\n');
+  if (!data.content) {
+    throw new Error('MiniMax returned an empty response.');
+  }
+
+  return data.content;
 }
 
 function App() {
@@ -833,7 +822,8 @@ function App() {
 
       try {
         const context = retrieveContext(selectedLab, userText);
-        const systemPrompt = buildSystemPrompt(selectedLab, context, user);
+        const manualContext = getLabManualContext(selectedLab.id, userText);
+        const systemPrompt = buildSystemPrompt(selectedLab, context, manualContext, user, attachments);
         const apiMessages = [
           { role: 'system', content: systemPrompt },
           ...historySnapshot.map((message) => ({
@@ -844,16 +834,10 @@ function App() {
           { role: 'user', content: userText, attachments },
         ];
 
-        let responseText;
-        if (window.networkForensicsAI?.complete) {
-          responseText = await window.networkForensicsAI.complete({
-            lab: selectedLab,
-            messages: apiMessages,
-          });
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, 450));
-          responseText = mockResponse(selectedLab, userText, context, attachments);
-        }
+        const responseText = await completeWithMiniMax({
+          lab: selectedLab,
+          messages: apiMessages,
+        });
 
         appendMessage(selectedLabId, sessionId, {
           id: createId('a'),
