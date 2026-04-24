@@ -208,7 +208,7 @@ function DotGrid({ accentColor }) {
 
       context.clearRect(0, 0, width, height);
 
-      const radius = Math.min(220, Math.max(150, width * 0.145));
+      const radius = Math.min(130, Math.max(82, width * 0.075));
       const time = now * 0.001;
       const active = pointer.active;
 
@@ -226,19 +226,19 @@ function DotGrid({ accentColor }) {
         const ripple = wave * influence;
         const waveBand = (wave + 1) * 0.5;
         const depth = dot.depth;
-        const push = influence * (4.8 + pointer.velocity * 8) * depth;
-        const swirl = ripple * (5.2 + pointer.velocity * 4.2) * depth;
+        const push = influence * (2.2 + pointer.velocity * 3.4) * depth;
+        const swirl = ripple * (2.4 + pointer.velocity * 2.1) * depth;
         const x = dot.x + Math.cos(angle) * push - Math.sin(angle) * swirl;
         const y = dot.y + Math.sin(angle) * push + Math.cos(angle) * swirl;
-        const tint = Math.min(0.46, influence * (0.15 + waveBand * 0.36 + pointer.velocity * 0.08));
+        const tint = Math.min(0.3, influence * (0.08 + waveBand * 0.22 + pointer.velocity * 0.04));
         const color = mixColor(palette.base, palette.accent, tint);
         const size = Math.max(
           0.55,
-          0.58 + depth * 0.46 + influence * (0.44 + waveBand * 0.42 + pointer.velocity * 0.3) + ambient * 0.14,
+          0.58 + depth * 0.46 + influence * (0.22 + waveBand * 0.2 + pointer.velocity * 0.12) + ambient * 0.14,
         );
         const alpha = Math.min(
           0.76,
-          palette.baseAlpha + depth * 0.08 + ambient * 0.08 + influence * palette.liftAlpha * (0.22 + waveBand * 0.58),
+          palette.baseAlpha + depth * 0.08 + ambient * 0.08 + influence * palette.liftAlpha * (0.12 + waveBand * 0.3),
         );
 
         context.beginPath();
