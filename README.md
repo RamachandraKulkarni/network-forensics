@@ -30,14 +30,24 @@ Add these redirect URLs in Supabase:
 
 ```text
 http://127.0.0.1:5173/
-https://ramachandrakulkarni.github.io/network-forensics/
+http://localhost:5173/
+https://network-forensics.vercel.app/
 ```
 
-## GitHub Pages
+## Vercel
 
-The workflow in `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on pushes to `main`.
+Vercel can build this project directly from GitHub.
 
-Set these repository secrets before deploying:
+Build settings:
+
+```text
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm ci
+```
+
+Set these Vercel environment variables:
 
 ```text
 VITE_SUPABASE_URL
