@@ -30,6 +30,8 @@ body {
   --gc-error: #ffb4ab;
   --gc-warn: #f5a524;
   --gc-success: #10b981;
+  --logo-color: #ffc627;
+  --logo-tile: color-mix(in srgb, var(--logo-color) 12%, var(--gc-low));
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-body: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
@@ -62,6 +64,8 @@ body[data-theme="light"] {
   --gc-error: #dc2626;
   --gc-warn: #b45309;
   --gc-success: #059669;
+  --logo-color: #8c1d40;
+  --logo-tile: color-mix(in srgb, var(--logo-color) 9%, var(--gc-bg));
 }
 
 button,
@@ -175,15 +179,29 @@ input::placeholder {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  background: linear-gradient(135deg, var(--gc-maroon), var(--gc-maroon-dim));
-  color: #ffc627;
-  border: 1px solid rgba(140, 29, 64, 0.44);
+  background: var(--logo-tile);
+  color: var(--logo-color);
+  border: 1px solid color-mix(in srgb, var(--logo-color) 40%, transparent);
 }
 
 .brand-mark.large {
   width: 44px;
   height: 44px;
   border-radius: 10px;
+}
+
+.project-logo {
+  width: 26px;
+  height: 26px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url("/network-forensics-logo-mask.png") center / contain no-repeat;
+  mask: url("/network-forensics-logo-mask.png") center / contain no-repeat;
+}
+
+.brand-mark.large .project-logo {
+  width: 34px;
+  height: 34px;
 }
 
 .brand-copy {
@@ -1146,6 +1164,17 @@ input::placeholder {
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
+}
+
+.auth-loading .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.auth-loading .project-logo {
+  width: 24px;
+  height: 24px;
 }
 
 .auth-card {

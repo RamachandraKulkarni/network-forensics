@@ -13,10 +13,8 @@ import {
   PanelLeft,
   Plus,
   Send,
-  ShieldCheck,
   Sparkles,
   Sun,
-  TerminalSquare,
   Trash2,
   X,
 } from 'lucide-react';
@@ -635,7 +633,7 @@ function App() {
         <div className="sidebar-inner">
           <div className="brand-block">
             <div className="brand-mark">
-              <TerminalSquare size={17} />
+              <span className="project-logo" aria-hidden="true" />
             </div>
             <div className="brand-copy">
               <strong>Network Forensics Lab TA</strong>
@@ -798,6 +796,9 @@ function AuthLoadingScreen() {
     <div className="auth-screen">
       <div className="dot-grid" />
       <div className="auth-loading">
+        <span className="brand-mark">
+          <span className="project-logo" aria-hidden="true" />
+        </span>
         <LoaderCircle size={18} className="spin" />
         <span>Checking GitHub session</span>
       </div>
@@ -819,7 +820,7 @@ function AuthScreen({ onSignIn, error, supabaseReady }) {
       <section className="auth-card" aria-label="Sign in">
         <div className="auth-banner">
           <div className="brand-mark large">
-            <ShieldCheck size={22} />
+            <span className="project-logo" aria-hidden="true" />
           </div>
           <div>
             <strong>Information Technology, Arizona State University</strong>
