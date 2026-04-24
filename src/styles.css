@@ -242,6 +242,39 @@ input::placeholder {
   color: var(--gc-outline);
 }
 
+.section-label-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 8px 5px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gc-outline);
+  border-radius: 6px;
+  transition: background 120ms, color 120ms;
+}
+
+.section-label-toggle:hover {
+  background: var(--gc-high);
+  color: var(--gc-text-dim);
+}
+
+.toggle-chevron {
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+
+.toggle-chevron.is-open {
+  transform: rotate(180deg);
+}
+
 .lab-list,
 .session-list {
   display: grid;
@@ -322,6 +355,9 @@ input::placeholder {
 
 .session-button {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   text-align: left;
   padding: 6px 8px;
   border: 0;
@@ -330,9 +366,32 @@ input::placeholder {
   color: var(--gc-text-dim);
   font-size: 12px;
   cursor: pointer;
+  overflow: hidden;
+}
+
+.session-button-title {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.session-lab-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--lab-color) 40%, transparent);
+  background: color-mix(in srgb, var(--lab-color) 12%, transparent);
+  color: var(--lab-color);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
 }
 
 .session-button:hover,

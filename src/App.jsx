@@ -585,6 +585,7 @@ function App() {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 900px)').matches;
   });
+  const [labsOpen, setLabsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState([]);
   const [composerError, setComposerError] = useState('');
@@ -747,6 +748,24 @@ function App() {
     setComposerError('');
     setNotesOpen(false);
   }, []);
+
+  const handleSelectSession = useCallback((labId, sessionId) => {
+    if (labId !== selectedLabId) {
+      setSelectedLabId(labId);
+      setInput('');
+      setPendingImages([]);
+      setComposerError('');
+      setNotesOpen(false);
+    }
+    setCurrentSessionId(sessionId);
+  }, [selectedLabId]);
+
+  const allRecentSessions = useMemo(() => {
+    return labs
+      .flatMap((lab) => (sessions[lab.id] || []).map((session) => ({ ...session, lab })))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, 8);
+  }, [labs, sessions]);
 
   const handleFiles = useCallback(
     async (fileList) => {
@@ -930,28 +949,41 @@ function App() {
           </div>
 
           <div className="sidebar-scroll">
-            <SectionLabel>Labs</SectionLabel>
-            <div className="lab-list">
-              {labs.map((lab) => (
-                <LabButton
-                  key={lab.id}
-                  lab={lab}
-                  selected={selectedLabId === lab.id}
-                  onClick={handleSelectLab}
-                />
-              ))}
-            </div>
+            <button
+              className="section-label-toggle"
+              type="button"
+              onClick={() => setLabsOpen((open) => !open)}
+              aria-expanded={labsOpen}
+            >
+              <span>Labs</span>
+              <ChevronDown
+                size={12}
+                className={`toggle-chevron ${labsOpen ? 'is-open' : ''}`}
+              />
+            </button>
+            {labsOpen && (
+              <div className="lab-list">
+                {labs.map((lab) => (
+                  <LabButton
+                    key={lab.id}
+                    lab={lab}
+                    selected={selectedLabId === lab.id}
+                    onClick={handleSelectLab}
+                  />
+                ))}
+              </div>
+            )}
 
-            {labSessions.length > 0 && (
+            {allRecentSessions.length > 0 && (
               <>
                 <SectionLabel>Recent chats</SectionLabel>
                 <div className="session-list">
-                  {labSessions.slice(0, 6).map((session) => (
+                  {allRecentSessions.map((session) => (
                     <SessionButton
                       key={session.id}
                       session={session}
                       active={currentSession?.id === session.id}
-                      onClick={setCurrentSessionId}
+                      onClick={handleSelectSession}
                     />
                   ))}
                 </div>
@@ -1184,13 +1216,23 @@ function LabBadge({ domain, color, small = false }) {
 }
 
 function SessionButton({ session, active, onClick }) {
+  const lab = session.lab;
   return (
     <button
       className={`session-button ${active ? 'is-active' : ''}`}
       type="button"
-      onClick={() => onClick(session.id)}
+      onClick={() => onClick(lab?.id || session.labId, session.id)}
     >
-      {session.title || 'New chat'}
+      <span className="session-button-title">{session.title || 'New chat'}</span>
+      {lab && (
+        <span
+          className="session-lab-badge"
+          style={{ '--lab-color': lab.color }}
+          title={`Lab ${String(lab.number).padStart(2, '0')} — ${lab.domain}`}
+        >
+          {String(lab.number).padStart(2, '0')}
+        </span>
+      )}
     </button>
   );
 }
