@@ -1004,6 +1004,14 @@ input::placeholder {
   flex: 0 0 auto;
 }
 
+.thought-indicator-filled {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gc-accent);
+  flex: 0 0 auto;
+}
+
 .thinking-disclosure summary:hover {
   background: var(--gc-high);
 }
@@ -1639,6 +1647,17 @@ input::placeholder {
 
 .spin-slow {
   animation: spin 2s linear infinite;
+}
+
+.formatted-message p,
+.formatted-message li,
+.formatted-message h2,
+.formatted-message h3 {
+  display: inline;
+}
+
+.formatted-message p {
+  display: block;
 }
 
 .mobile-backdrop {
