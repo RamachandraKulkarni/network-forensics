@@ -1649,17 +1649,6 @@ input::placeholder {
   animation: spin 2s linear infinite;
 }
 
-.formatted-message p,
-.formatted-message li,
-.formatted-message h2,
-.formatted-message h3 {
-  display: inline;
-}
-
-.formatted-message p {
-  display: block;
-}
-
 .mobile-backdrop {
   display: none;
 }

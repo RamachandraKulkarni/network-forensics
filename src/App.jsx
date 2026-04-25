@@ -18,8 +18,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-
-const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 import { upsertProfile } from './lib/supabaseBackend';
 import { getLabManualContext } from './labManualContext';
@@ -1404,52 +1402,6 @@ function MessageBubble({ message }) {
   );
 }
 
-function ScrambleText({ text, speed = 30, revealDelay = 10 }) {
-  const [display, setDisplay] = useState('');
-  const [revealed, setRevealed] = useState(0);
-
-  useEffect(() => {
-    setDisplay('');
-    setRevealed(0);
-
-    if (!text) return;
-
-    let mounted = true;
-    let currentIndex = 0;
-
-    const step = () => {
-      if (!mounted) return;
-
-      if (currentIndex < text.length) {
-        const targetLength = Math.min(currentIndex + 1, text.length);
-        let scramble = '';
-
-        for (let i = 0; i < text.length; i++) {
-          if (i < targetLength) {
-            scramble += text[i];
-          } else if (text[i] === ' ' || text[i] === '\n') {
-            scramble += text[i];
-          } else {
-            scramble += CHARS[Math.floor(Math.random() * CHARS.length)];
-          }
-        }
-
-        setDisplay(scramble);
-        currentIndex++;
-        setTimeout(step, speed);
-      } else {
-        setRevealed(text.length);
-      }
-    };
-
-    setTimeout(step, revealDelay);
-
-    return () => { mounted = false; };
-  }, [text, speed, revealDelay]);
-
-  return <span>{display}</span>;
-}
-
 function FormattedMessage({ content }) {
   const extractThinking = (text) => {
     const thoughts = [];
@@ -1639,152 +1591,6 @@ function FormattedMessage({ content }) {
 
   const { answer, thoughts } = extractThinking(content);
 
-  const renderAnswerWithScramble = (text) => {
-    const lines = text.split('\n');
-    const blocks = [];
-    let codeLines = [];
-    let listItems = [];
-    let orderedItems = [];
-    let paragraph = [];
-    let quote = [];
-    let inCode = false;
-    let blockKey = 0;
-
-    const flushParagraph = () => {
-      if (!paragraph.length) return;
-      const text = paragraph.join(' ').trim();
-      if (text) blocks.push(<p key={`p-${blockKey++}`}><ScrambleText text={text} /></p>);
-      paragraph = [];
-    };
-
-    const flushList = () => {
-      if (listItems.length) {
-        blocks.push(
-          <ul key={`ul-${blockKey++}`}>
-            {listItems.map((item, index) => (
-              <li key={index}><ScrambleText text={item} /></li>
-            ))}
-          </ul>,
-        );
-        listItems = [];
-      }
-
-      if (orderedItems.length) {
-        blocks.push(
-          <ol key={`ol-${blockKey++}`}>
-            {orderedItems.map((item, index) => (
-              <li key={index}><ScrambleText text={item} /></li>
-            ))}
-          </ol>,
-        );
-        orderedItems = [];
-      }
-    };
-
-    const flushQuote = () => {
-      if (!quote.length) return;
-      blocks.push(
-        <blockquote key={`quote-${blockKey++}`}>
-          <ScrambleText text={quote.join(' ')} />
-        </blockquote>,
-      );
-      quote = [];
-    };
-
-    lines.forEach((line, index) => {
-      if (line.trim().startsWith('```')) {
-        flushParagraph();
-        flushList();
-        flushQuote();
-
-        if (!inCode) {
-          inCode = true;
-          codeLines = [];
-        } else {
-          inCode = false;
-          blocks.push(
-            <pre key={`code-${blockKey++}`}>
-              <code>{codeLines.join('\n')}</code>
-            </pre>,
-          );
-        }
-        return;
-      }
-
-      if (inCode) {
-        codeLines.push(line);
-        return;
-      }
-
-      if (!line.trim()) {
-        flushParagraph();
-        flushList();
-        flushQuote();
-        return;
-      }
-
-      const heading = line.match(/^(#{1,3})\s+(.+)/);
-      if (heading) {
-        flushParagraph();
-        flushList();
-        flushQuote();
-        const level = Math.min(heading[1].length, 3);
-        const HeadingTag = level === 1 ? 'h2' : 'h3';
-        blocks.push(<HeadingTag key={`heading-${blockKey++}`}><ScrambleText text={heading[2]} /></HeadingTag>);
-        return;
-      }
-
-      if (/^>\s?/.test(line)) {
-        flushParagraph();
-        flushList();
-        quote.push(line.replace(/^>\s?/, '').trim());
-        return;
-      }
-
-      if (/^\d+\.\s/.test(line)) {
-        flushParagraph();
-        flushQuote();
-        orderedItems.push(line.replace(/^\d+\.\s/, '').trim());
-        return;
-      }
-
-      if (/^[-*]\s/.test(line)) {
-        flushParagraph();
-        flushQuote();
-        listItems.push(line.replace(/^[-*]\s/, '').trim());
-        return;
-      }
-
-      if (/^\*\*(.+)\*\*$/.test(line.trim())) {
-        flushParagraph();
-        flushList();
-        flushQuote();
-        blocks.push(
-          <h3 key={`bold-heading-${blockKey++}`}>
-            <ScrambleText text={line.trim().replace(/^\*\*/, '').replace(/\*\*$/, '')} />
-          </h3>,
-        );
-        return;
-      }
-
-      paragraph.push(line.trim());
-    });
-
-    if (inCode) {
-      blocks.push(
-        <pre key={`code-${blockKey++}`}>
-          <code>{codeLines.join('\n')}</code>
-        </pre>,
-      );
-    }
-
-    flushParagraph();
-    flushList();
-    flushQuote();
-
-    return blocks.length ? blocks : <p><ScrambleText text={text} /></p>;
-  };
-
   return (
     <div className="formatted-message">
       {thoughts.length > 0 && (
@@ -1800,7 +1606,7 @@ function FormattedMessage({ content }) {
           </div>
         </details>
       )}
-      {answer && renderAnswerWithScramble(answer)}
+      {answer && renderAnswer(answer)}
     </div>
   );
 }
