@@ -134,12 +134,7 @@ async function analyzeImagesWithOpenRouter(sourceMessages) {
     headers: openRouterHeaders(apiKey),
     body: JSON.stringify({
       model,
-      messages: [
-        {
-          role: 'user',
-          content: openRouterImageContent(message),
-        },
-      ],
+      messages: [{ role: 'user', content: openRouterImageContent(message) }],
       temperature: 0.1,
       max_tokens: 900,
     }),
@@ -155,10 +150,57 @@ async function analyzeImagesWithOpenRouter(sourceMessages) {
     throw new Error('OpenRouter returned an empty image analysis.');
   }
 
-  return [
-    `Image analysis model: ${data.model || model}`,
-    content,
-  ].join('\n');
+  return [`Image analysis model: ${data.model || model}`, content].join('\n');
+}
+
+async function analyzeImagesWithMiniMax(sourceMessages, apiKey) {
+  const message = latestMessageWithImages(sourceMessages);
+  if (!message) return '';
+
+  const images = (Array.isArray(message?.attachments) ? message.attachments : [])
+    .filter(hasUsableImage)
+    .slice(0, 5);
+
+  const visionContent = [
+    {
+      type: 'text',
+      text: [
+        'Analyze these uploaded screenshots or evidence images for a digital forensics lab assistant.',
+        'Extract only visible information. Look for tool names, panes, selected artifacts, filenames, hashes, IP addresses, timestamps, usernames, email fields, browser entries, registry paths, command output, warning/error text, and any visible evidence values.',
+        'If a value is unclear or unreadable, say it is unreadable. Do not invent values.',
+        '',
+        message?.content ? `Student question: ${message.content}` : 'Student question: image-only evidence request.',
+      ].join('\n'),
+    },
+    ...images.map((image) => ({ type: 'image_url', image_url: { url: image.url } })),
+  ];
+
+  const model = process.env.MINIMAX_VISION_MODEL || process.env.MINIMAX_MODEL || DEFAULT_MODEL;
+  const response = await fetch(MINIMAX_CHAT_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: visionContent }],
+      temperature: 0.1,
+      max_completion_tokens: 900,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.base_resp?.status_code) {
+    throw new Error(`MiniMax image analysis failed: ${errorMessage(data) || `status ${response.status}`}`);
+  }
+
+  const content = data?.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error('MiniMax returned an empty image analysis.');
+  }
+
+  return [`Image analysis model (MiniMax fallback): ${data.model || model}`, content].join('\n');
 }
 
 function appendImageAnalysis(messages, imageAnalysis) {
@@ -167,7 +209,7 @@ function appendImageAnalysis(messages, imageAnalysis) {
   const nextMessages = (Array.isArray(messages) ? messages : []).map((message) => ({ ...message }));
   const systemIndex = nextMessages.findIndex((message) => message.role === 'system');
   const context = [
-    'OpenRouter image analysis for the latest student attachments:',
+    'Image analysis for the latest student attachments:',
     imageAnalysis,
     '',
     'Use this image analysis as observed evidence. Do not invent details that are not present in the analysis or the student text.',
@@ -258,8 +300,20 @@ export default async function handler(req, res) {
   try {
     let sourceMessages = body.messages;
     if (messagesHaveImages(sourceMessages)) {
-      const imageAnalysis = await analyzeImagesWithOpenRouter(sourceMessages);
-      sourceMessages = appendImageAnalysis(sourceMessages, imageAnalysis);
+      let imageAnalysis = '';
+      try {
+        imageAnalysis = await analyzeImagesWithOpenRouter(sourceMessages);
+      } catch (openRouterError) {
+        console.warn('OpenRouter image analysis failed, trying MiniMax fallback:', openRouterError.message);
+        try {
+          imageAnalysis = await analyzeImagesWithMiniMax(sourceMessages, apiKey);
+        } catch (miniMaxError) {
+          console.warn('MiniMax image analysis also failed, proceeding with metadata only:', miniMaxError.message);
+        }
+      }
+      if (imageAnalysis) {
+        sourceMessages = appendImageAnalysis(sourceMessages, imageAnalysis);
+      }
     }
 
     const messages = normalizeMessages(sourceMessages);
