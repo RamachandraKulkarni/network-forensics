@@ -932,7 +932,7 @@ function App() {
   const canSend = (input.trim() || pendingImages.length > 0) && !loading;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ '--gc-accent': selectedLab?.color }}>
       <DotGrid accentColor={selectedLab?.color} />
       {sidebarOpen && <button className="mobile-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
 
@@ -955,24 +955,36 @@ function App() {
               onClick={() => setLabsOpen((open) => !open)}
               aria-expanded={labsOpen}
             >
-              <span>Labs</span>
+              <span className="toggle-label-group">
+                <span>Labs</span>
+                {selectedLab && (
+                  <span
+                    className={`labs-selected-chip ${labsOpen ? 'is-hidden' : ''}`}
+                    style={{ '--lab-color': selectedLab.color }}
+                  >
+                    {String(selectedLab.number).padStart(2, '0')}
+                  </span>
+                )}
+              </span>
               <ChevronDown
                 size={12}
                 className={`toggle-chevron ${labsOpen ? 'is-open' : ''}`}
               />
             </button>
-            {labsOpen && (
-              <div className="lab-list">
-                {labs.map((lab) => (
-                  <LabButton
-                    key={lab.id}
-                    lab={lab}
-                    selected={selectedLabId === lab.id}
-                    onClick={handleSelectLab}
-                  />
-                ))}
+            <div className={`lab-list-wrapper ${labsOpen ? 'is-open' : ''}`}>
+              <div className="lab-list-inner">
+                <div className="lab-list">
+                  {labs.map((lab) => (
+                    <LabButton
+                      key={lab.id}
+                      lab={lab}
+                      selected={selectedLabId === lab.id}
+                      onClick={handleSelectLab}
+                    />
+                  ))}
+                </div>
               </div>
-            )}
+            </div>
 
             {allRecentSessions.length > 0 && (
               <>
