@@ -1,7 +1,8 @@
 const MINIMAX_CHAT_URL = 'https://api.minimax.io/v1/chat/completions';
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'MiniMax-M2.7';
-const DEFAULT_OPENROUTER_IMAGE_MODEL = 'google/veo-3.1-fast';
+const DEFAULT_OPENROUTER_IMAGE_MODEL = 'google/gemini-2.0-flash-001';
+const DEFAULT_OPENROUTER_IMAGE_FALLBACK_MODEL = 'meta-llama/llama-3.2-11b-vision-instruct';
 
 function parseBody(req) {
   if (!req.body) return {};
@@ -119,16 +120,18 @@ function openRouterImageContent(message) {
   ];
 }
 
-async function analyzeImagesWithOpenRouter(sourceMessages) {
+function analyzeImagesWithOpenRouter(sourceMessages) {
+  const model = process.env.OPENROUTER_IMAGE_MODEL || DEFAULT_OPENROUTER_IMAGE_MODEL;
+  return analyzeImagesWithOpenRouterModel(sourceMessages, model);
+}
+
+async function analyzeImagesWithOpenRouterModel(sourceMessages, model) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OpenRouter API key is not configured.');
+
   const message = latestMessageWithImages(sourceMessages);
   if (!message) return '';
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error('OpenRouter API key is not configured for image analysis.');
-  }
-
-  const model = process.env.OPENROUTER_IMAGE_MODEL || DEFAULT_OPENROUTER_IMAGE_MODEL;
   const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: openRouterHeaders(apiKey),
@@ -142,65 +145,13 @@ async function analyzeImagesWithOpenRouter(sourceMessages) {
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(`OpenRouter image analysis failed: ${errorMessage(data) || `status ${response.status}`}`);
+    throw new Error(`OpenRouter image analysis failed (${model}): ${errorMessage(data) || `status ${response.status}`}`);
   }
 
   const content = data?.choices?.[0]?.message?.content?.trim();
-  if (!content) {
-    throw new Error('OpenRouter returned an empty image analysis.');
-  }
+  if (!content) throw new Error(`OpenRouter returned an empty image analysis (${model}).`);
 
   return [`Image analysis model: ${data.model || model}`, content].join('\n');
-}
-
-async function analyzeImagesWithMiniMax(sourceMessages, apiKey) {
-  const message = latestMessageWithImages(sourceMessages);
-  if (!message) return '';
-
-  const images = (Array.isArray(message?.attachments) ? message.attachments : [])
-    .filter(hasUsableImage)
-    .slice(0, 5);
-
-  const visionContent = [
-    {
-      type: 'text',
-      text: [
-        'Analyze these uploaded screenshots or evidence images for a digital forensics lab assistant.',
-        'Extract only visible information. Look for tool names, panes, selected artifacts, filenames, hashes, IP addresses, timestamps, usernames, email fields, browser entries, registry paths, command output, warning/error text, and any visible evidence values.',
-        'If a value is unclear or unreadable, say it is unreadable. Do not invent values.',
-        '',
-        message?.content ? `Student question: ${message.content}` : 'Student question: image-only evidence request.',
-      ].join('\n'),
-    },
-    ...images.map((image) => ({ type: 'image_url', image_url: { url: image.url } })),
-  ];
-
-  const model = process.env.MINIMAX_VISION_MODEL || process.env.MINIMAX_MODEL || DEFAULT_MODEL;
-  const response = await fetch(MINIMAX_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: visionContent }],
-      temperature: 0.1,
-      max_completion_tokens: 900,
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok || data?.base_resp?.status_code) {
-    throw new Error(`MiniMax image analysis failed: ${errorMessage(data) || `status ${response.status}`}`);
-  }
-
-  const content = data?.choices?.[0]?.message?.content?.trim();
-  if (!content) {
-    throw new Error('MiniMax returned an empty image analysis.');
-  }
-
-  return [`Image analysis model (MiniMax fallback): ${data.model || model}`, content].join('\n');
 }
 
 function appendImageAnalysis(messages, imageAnalysis) {
@@ -303,12 +254,13 @@ export default async function handler(req, res) {
       let imageAnalysis = '';
       try {
         imageAnalysis = await analyzeImagesWithOpenRouter(sourceMessages);
-      } catch (openRouterError) {
-        console.warn('OpenRouter image analysis failed, trying MiniMax fallback:', openRouterError.message);
+      } catch (primaryError) {
+        console.warn('Primary vision model failed, trying fallback:', primaryError.message);
         try {
-          imageAnalysis = await analyzeImagesWithMiniMax(sourceMessages, apiKey);
-        } catch (miniMaxError) {
-          console.warn('MiniMax image analysis also failed, proceeding with metadata only:', miniMaxError.message);
+          const fallbackModel = process.env.OPENROUTER_IMAGE_FALLBACK_MODEL || DEFAULT_OPENROUTER_IMAGE_FALLBACK_MODEL;
+          imageAnalysis = await analyzeImagesWithOpenRouterModel(sourceMessages, fallbackModel);
+        } catch (fallbackError) {
+          console.warn('Fallback vision model also failed, proceeding with metadata only:', fallbackError.message);
         }
       }
       if (imageAnalysis) {
