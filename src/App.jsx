@@ -393,19 +393,32 @@ function formatBytes(bytes) {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
+const IMAGE_MAX_DIM = 1280;
+const IMAGE_JPEG_QUALITY = 0.85;
+
 function readImageFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      resolve({
-        id: createId('img'),
-        name: file.name,
-        size: file.size,
-        type: file.type || 'image/*',
-        url: reader.result,
-      });
-    };
     reader.onerror = () => reject(reader.error || new Error('Unable to read image.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Unable to decode image.'));
+      img.onload = () => {
+        const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(img.width, img.height, 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({
+          id: createId('img'),
+          name: file.name,
+          size: file.size,
+          type: 'image/jpeg',
+          url: canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY),
+        });
+      };
+      img.src = reader.result;
+    };
     reader.readAsDataURL(file);
   });
 }
