@@ -742,6 +742,7 @@ function App() {
 
   const handleSelectLab = useCallback((labId) => {
     setSelectedLabId(labId);
+    setLabsOpen(false);
     setCurrentSessionId(null);
     setInput('');
     setPendingImages([]);
@@ -802,6 +803,14 @@ function App() {
     },
     [pendingImages.length],
   );
+
+  const handlePaste = useCallback((event) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (0 === imageItems.length) return;
+    const files = imageItems.map((item) => item.getAsFile()).filter(Boolean);
+    if (files.length > 0) handleFiles(files);
+  }, [handleFiles]);
 
   const handleRemovePendingImage = useCallback((id) => {
     setPendingImages((previous) => previous.filter((image) => image.id !== id));
@@ -1075,6 +1084,7 @@ function App() {
                 onChange={(event) => setInput(event.target.value)}
                 onInput={handleTextareaInput}
                 onKeyDown={handleTextareaKeyDown}
+                onPaste={handlePaste}
                 onFocus={() => setComposerFocused(true)}
                 onBlur={() => setComposerFocused(false)}
                 placeholder={`Ask the Lab ${String(selectedLab.number).padStart(2, '0')} TA about tasks, tools, or evidence`}
