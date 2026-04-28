@@ -26,6 +26,39 @@ const IMAGE_LIMIT = 5;
 const SESSION_LIMIT = 12;
 const MESSAGE_LIMIT = 60;
 
+const LAB_ACCENTS = {
+  dark: {
+    1: '#C4A876',
+    2: '#9E90BE',
+    3: '#C8A040',
+    4: '#B87068',
+    5: '#6888A8',
+    6: '#6A9878',
+    7: '#608898',
+    8: '#9870A8',
+    9: '#58A0A8',
+  },
+  light: {
+    1: '#7C3050',
+    2: '#5C4878',
+    3: '#8C5820',
+    4: '#8C2828',
+    5: '#305880',
+    6: '#486030',
+    7: '#286858',
+    8: '#682878',
+    9: '#206070',
+  },
+};
+
+function applyLabAccent(lab, theme) {
+  const palette = LAB_ACCENTS[theme] || LAB_ACCENTS.dark;
+  return {
+    ...lab,
+    color: palette[lab.number] || lab.color,
+  };
+}
+
 function createId(prefix) {
   const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
   return `${prefix}_${random}`;
@@ -64,16 +97,17 @@ function saveTheme(theme) {
 
 function applyTheme(theme) {
   const isLight = theme === 'light';
-  document.body.dataset.theme = isLight ? 'light' : '';
+  document.body.dataset.theme = isLight ? 'light' : 'dark';
+  document.body.classList.toggle('light', isLight);
 
   const favicon = document.getElementById('dynamic-favicon');
   if (favicon) {
-    favicon.setAttribute('href', isLight ? '/favicon-light.png' : '/favicon-dark.png');
+    favicon.setAttribute('href', '/favicon-dark.png');
   }
 
   const themeColor = document.getElementById('theme-color');
   if (themeColor) {
-    themeColor.setAttribute('content', isLight ? '#faf9f7' : '#131315');
+    themeColor.setAttribute('content', isLight ? '#F2EEE2' : '#0B111E');
   }
 }
 
@@ -154,12 +188,12 @@ function DotGrid({ accentColor }) {
 
     const syncPalette = () => {
       const styles = getComputedStyle(document.body);
-      const fallbackAccent = parseColor(styles.getPropertyValue('--gc-accent'), { r: 255, g: 198, b: 39 });
+      const fallbackAccent = parseColor(styles.getPropertyValue('--gc-accent'), { r: 200, g: 169, b: 126 });
       const lightTheme = document.body.dataset.theme === 'light';
 
       palette = {
         accent: parseColor(accentColor, fallbackAccent),
-        base: parseColor(styles.getPropertyValue('--gc-outline-v'), lightTheme ? { r: 150, g: 142, b: 142 } : { r: 62, g: 72, b: 79 }),
+        base: parseColor(styles.getPropertyValue('--gc-outline-v'), lightTheme ? { r: 206, g: 200, b: 178 } : { r: 28, g: 46, b: 70 }),
         baseAlpha: lightTheme ? 0.42 : 0.28,
         liftAlpha: lightTheme ? 0.26 : 0.32,
       };
@@ -573,8 +607,8 @@ async function completeWithMiniMax({ lab, messages }) {
 }
 
 function App() {
-  const labs = useMemo(() => Object.values(window.LAB_DATA || {}), []);
-  const defaultLabId = labs[0]?.id || 'lab01';
+  const rawLabs = useMemo(() => Object.values(window.LAB_DATA || {}), []);
+  const defaultLabId = rawLabs[0]?.id || 'lab01';
 
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -587,7 +621,7 @@ function App() {
   const [selectedLabId, setSelectedLabId] = useState(defaultLabId);
   const [sessions, setSessions] = useState(() => {
     const all = {};
-    labs.forEach((lab) => {
+    rawLabs.forEach((lab) => {
       all[lab.id] = loadSessions(lab.id);
     });
     return all;
@@ -610,7 +644,8 @@ function App() {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const selectedLab = (window.LAB_DATA || {})[selectedLabId] || labs[0];
+  const labs = useMemo(() => rawLabs.map((lab) => applyLabAccent(lab, theme)), [rawLabs, theme]);
+  const selectedLab = labs.find((lab) => lab.id === selectedLabId) || labs[0];
   const labSessions = sessions[selectedLabId] || [];
   const currentSession =
     labSessions.find((session) => session.id === currentSessionId) || labSessions[0] || null;
@@ -623,10 +658,10 @@ function App() {
   }, [messages, loading]);
 
   useEffect(() => {
-    labs.forEach((lab) => {
+    rawLabs.forEach((lab) => {
       if (sessions[lab.id]) saveSessions(lab.id, sessions[lab.id]);
     });
-  }, [labs, sessions]);
+  }, [rawLabs, sessions]);
 
   useEffect(() => {
     if (!input && textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -1319,10 +1354,11 @@ function AccountMenu({ user, onSignOut }) {
 
 function ThemeToggle({ theme, onToggle }) {
   const isDark = theme === 'dark';
+  const nextTheme = isDark ? 'Olive + Burgundy' : 'Oxford Blue + Tan';
   return (
-    <button className="theme-toggle" type="button" onClick={onToggle}>
+    <button className="theme-toggle" type="button" onClick={onToggle} title={`Switch to ${nextTheme}`}>
       {isDark ? <Sun size={14} /> : <Moon size={14} />}
-      {isDark ? 'Light' : 'Dark'}
+      {isDark ? 'Olive' : 'Oxford'}
     </button>
   );
 }
@@ -1428,7 +1464,7 @@ function MessageBubble({ message }) {
           </div>
         ) : (
           <>
-            {message.content ? <FormattedMessage content={message.content} /> : <div>Attached evidence images</div>}
+            {message.content ? <RenderedMessage content={message.content} /> : <div>Attached evidence images</div>}
             {message.attachments?.length > 0 && <ImageGrid images={message.attachments} />}
           </>
         )}
@@ -1642,6 +1678,263 @@ function FormattedMessage({ content }) {
         </details>
       )}
       {answer && renderAnswer(answer)}
+    </div>
+  );
+}
+
+function RenderedMessage({ content }) {
+  const extractThinking = (text) => {
+    const thoughts = [];
+    const answer = text.replace(/<think(?:ing)?>([\s\S]*?)(?:<\/think(?:ing)?>|$)/gi, (_match, thought) => {
+      if (thought?.trim()) thoughts.push(thought.trim());
+      return '';
+    });
+
+    return { thoughts, answer: answer.trim() };
+  };
+
+  const inline = (text, prefix = 'inline') => {
+    const parts = [];
+    const pattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*\*(.+?)\*\*|`([^`]+)`|\*([^*\n]+)\*)/g;
+    let match;
+    let last = 0;
+    let index = 0;
+
+    while ((match = pattern.exec(text)) !== null) {
+      if (match.index > last) {
+        parts.push(<span key={`${prefix}-${index++}`}>{text.slice(last, match.index)}</span>);
+      }
+
+      if (match[2] && match[3]) {
+        parts.push(
+          <a key={`${prefix}-${index++}`} href={match[3]} target="_blank" rel="noreferrer">
+            {match[2]}
+          </a>,
+        );
+      } else if (match[4]) {
+        parts.push(<strong key={`${prefix}-${index++}`}>{match[4]}</strong>);
+      } else if (match[5]) {
+        parts.push(<code key={`${prefix}-${index++}`}>{match[5]}</code>);
+      } else if (match[6]) {
+        parts.push(<em key={`${prefix}-${index++}`}>{match[6]}</em>);
+      }
+
+      last = match.index + match[0].length;
+    }
+
+    if (last < text.length) parts.push(<span key={`${prefix}-${index++}`}>{text.slice(last)}</span>);
+    return parts.length ? parts : text;
+  };
+
+  const isTableRow = (line) => line.trim().startsWith('|') && line.trim().endsWith('|');
+  const isTableDivider = (line) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  const parseTableRow = (line) =>
+    line
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((cell) => cell.trim());
+
+  const renderCodeBlock = (code, language, key) => (
+    <figure className="code-block" key={key}>
+      {language && <figcaption>{language}</figcaption>}
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </figure>
+  );
+
+  const renderBlocks = (text) => {
+    const lines = text.split('\n');
+    const blocks = [];
+    let blockKey = 0;
+    let paragraph = [];
+    let bullets = [];
+    let ordered = [];
+    let quote = [];
+    let code = [];
+    let codeLanguage = '';
+    let inCode = false;
+
+    const flushParagraph = () => {
+      const value = paragraph.join(' ').trim();
+      if (value) blocks.push(<p key={`p-${blockKey++}`}>{inline(value, `p-${blockKey}`)}</p>);
+      paragraph = [];
+    };
+
+    const flushList = () => {
+      if (bullets.length) {
+        blocks.push(
+          <ul key={`ul-${blockKey++}`}>
+            {bullets.map((item, index) => (
+              <li key={index}>{inline(item, `ul-${blockKey}-${index}`)}</li>
+            ))}
+          </ul>,
+        );
+        bullets = [];
+      }
+
+      if (ordered.length) {
+        blocks.push(
+          <ol key={`ol-${blockKey++}`}>
+            {ordered.map((item, index) => (
+              <li key={index}>{inline(item, `ol-${blockKey}-${index}`)}</li>
+            ))}
+          </ol>,
+        );
+        ordered = [];
+      }
+    };
+
+    const flushQuote = () => {
+      const value = quote.join(' ').trim();
+      if (value) blocks.push(<blockquote key={`quote-${blockKey++}`}>{inline(value, `quote-${blockKey}`)}</blockquote>);
+      quote = [];
+    };
+
+    const flushText = () => {
+      flushParagraph();
+      flushList();
+      flushQuote();
+    };
+
+    const renderTable = (startIndex) => {
+      const header = parseTableRow(lines[startIndex]);
+      const rows = [];
+      let cursor = startIndex + 2;
+
+      while (cursor < lines.length && isTableRow(lines[cursor])) {
+        rows.push(parseTableRow(lines[cursor]));
+        cursor += 1;
+      }
+
+      blocks.push(
+        <div className="table-wrap" key={`table-${blockKey++}`}>
+          <table>
+            <thead>
+              <tr>
+                {header.map((cell, cellIndex) => (
+                  <th key={cellIndex}>{inline(cell, `th-${blockKey}-${cellIndex}`)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {header.map((_cell, cellIndex) => (
+                    <td key={cellIndex}>{inline(row[cellIndex] || '', `td-${blockKey}-${rowIndex}-${cellIndex}`)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+
+      return cursor;
+    };
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+
+      if (line.trim().startsWith('```')) {
+        flushText();
+
+        if (inCode) {
+          blocks.push(renderCodeBlock(code.join('\n'), codeLanguage, `code-${blockKey++}`));
+          code = [];
+          codeLanguage = '';
+          inCode = false;
+        } else {
+          codeLanguage = line.trim().replace(/^```/, '').trim();
+          inCode = true;
+        }
+        continue;
+      }
+
+      if (inCode) {
+        code.push(line);
+        continue;
+      }
+
+      if (!line.trim()) {
+        flushText();
+        continue;
+      }
+
+      if (isTableRow(line) && isTableDivider(lines[index + 1] || '')) {
+        flushText();
+        index = renderTable(index) - 1;
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,3})\s+(.+)/);
+      if (heading) {
+        flushText();
+        const HeadingTag = heading[1].length === 1 ? 'h2' : 'h3';
+        blocks.push(<HeadingTag key={`heading-${blockKey++}`}>{inline(heading[2], `heading-${blockKey}`)}</HeadingTag>);
+        continue;
+      }
+
+      if (/^\*\*(.+)\*\*$/.test(line.trim())) {
+        flushText();
+        blocks.push(
+          <h3 key={`bold-heading-${blockKey++}`}>
+            {inline(line.trim().replace(/^\*\*/, '').replace(/\*\*$/, ''), `bold-heading-${blockKey}`)}
+          </h3>,
+        );
+        continue;
+      }
+
+      if (/^>\s?/.test(line)) {
+        flushParagraph();
+        flushList();
+        quote.push(line.replace(/^>\s?/, '').trim());
+        continue;
+      }
+
+      if (/^\d+\.\s/.test(line)) {
+        flushParagraph();
+        flushQuote();
+        ordered.push(line.replace(/^\d+\.\s/, '').trim());
+        continue;
+      }
+
+      if (/^[-*]\s/.test(line)) {
+        flushParagraph();
+        flushQuote();
+        bullets.push(line.replace(/^[-*]\s/, '').trim());
+        continue;
+      }
+
+      paragraph.push(line.trim());
+    }
+
+    if (inCode) blocks.push(renderCodeBlock(code.join('\n'), codeLanguage, `code-${blockKey++}`));
+    flushText();
+
+    return blocks.length ? blocks : <p>{inline(text, 'fallback')}</p>;
+  };
+
+  const { thoughts, answer } = extractThinking(content);
+
+  return (
+    <div className="formatted-message">
+      {thoughts.length > 0 && (
+        <details className="thinking-disclosure">
+          <summary>
+            <span className="thought-indicator-filled" />
+            <span>Thinking</span>
+          </summary>
+          <div className="thinking-content">
+            {thoughts.map((thought, index) => (
+              <p key={index}>{thought}</p>
+            ))}
+          </div>
+        </details>
+      )}
+      {answer ? renderBlocks(answer) : null}
     </div>
   );
 }
